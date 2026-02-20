@@ -1,0 +1,86 @@
+#!/bin/bash
+
+echo "===== VTM AUTO WORKER BOOTSTRAP STARTED ====="
+
+# ---------- NETWORK CHECK ----------
+echo "Checking outbound networking..."
+
+curl -s https://google.com > /dev/null
+if [ $? -ne 0 ]; then
+    echo "Outbound internet NOT available. Exiting."
+    exit 1
+fi
+
+curl -s https://n8n.honeyhomes.in > /dev/null
+if [ $? -ne 0 ]; then
+    echo "Cannot reach n8n endpoint. Exiting."
+    exit 1
+fi
+
+echo "Networking OK."
+
+# ---------- SYSTEM PACKAGES ----------
+echo "Installing system dependencies..."
+apt update -y
+apt install -y ffmpeg unzip curl python3 python3-pip
+
+# ---------- PYTHON DEPENDENCIES ----------
+echo "Installing Python dependencies..."
+
+pip install --upgrade pip
+
+pip install paddlepaddle-gpu==2.6.1.post120 -f https://www.paddlepaddle.org.cn/whl/linux/mkl/avx/stable.html
+pip install "numpy<2.0" --force-reinstall
+pip install paddleocr==2.7.0.3
+pip install ultralytics
+pip install python-dateutil pytz requests rclone
+
+# ---------- INSTALL RCLONE ----------
+echo "Installing rclone..."
+curl https://rclone.org/install.sh | bash
+
+# ---------- RCLONE CONFIG ----------
+echo "Configuring rclone..."
+
+mkdir -p ~/.config/rclone
+
+cat > ~/.config/rclone/rclone.conf <<EOF
+[gdrive]
+type = drive
+scope = drive
+service_account_file = /root/sa.json
+EOF
+
+# NOTE: You must upload sa.json into VM before running bootstrap
+
+# ---------- DOWNLOAD WORKER ----------
+echo "Downloading worker.py..."
+curl -o /root/worker.py https://pastebin.com/raw/7PMHwJz8
+
+chmod +x /root/worker.py
+
+# ---------- WORKER LOOP ----------
+echo "Starting worker loop..."
+
+while true
+do
+    echo "Launching worker..."
+    python3 /root/worker.py
+
+    echo "Worker exited. Checking with n8n if more jobs exist..."
+
+    RESPONSE=$(curl -s -X POST https://n8n.honeyhomes.in/webhook/vtm/check-more-jobs)
+
+    if [[ "$RESPONSE" == *"no_jobs"* ]]; then
+        echo "No jobs remaining. Informing n8n to shut down instance..."
+        curl -X POST https://n8n.honeyhomes.in/webhook/vtm/shutdown-instance \
+             -H "Content-Type: application/json" \
+             -d "{\"worker\":\"$(hostname)\"}"
+        break
+    fi
+
+    echo "More jobs available. Restarting worker."
+    sleep 5
+done
+
+echo "===== WORKER TERMINATED ====="
