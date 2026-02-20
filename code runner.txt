@@ -55,7 +55,7 @@ EOF
 
 # ---------- DOWNLOAD WORKER ----------
 echo "Downloading worker.py..."
-curl -o /root/worker.py https://pastebin.com/raw/7PMHwJz8
+curl -o /root/worker.py https://raw.githubusercontent.com/propertyhost/VMT/refs/heads/main/worker.py
 
 chmod +x /root/worker.py
 
