@@ -1,3 +1,5 @@
+import sys
+print("Python executable:", sys.executable)
 import os
 import cv2
 import time
